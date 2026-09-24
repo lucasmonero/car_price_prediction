@@ -1,0 +1,17 @@
+# environment / caches
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# private data: only the synthetic sample is tracked
+data/raw/*
+!data/raw/.gitkeep
+data/interim/
+
+# trained model (regenerate with: python -m car_price.train --final)
+models/
+
+# optuna study database (regenerable)
+reports/optuna.db

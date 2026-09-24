@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Used-car price dashboard</title>
+<meta name="description" content="Interactive dashboard: price distributions, model performance and predicted prices for used-car listings (aggregated data only).">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,.10); --wash: rgba(11,11,11,.05);
+  --s1: #2a78d6; --s2: #eb6834; --bar-neutral: #b5b3ab; --warn-bg: rgba(250,178,25,.16);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10); --wash: rgba(255,255,255,.07);
+    --s1: #3987e5; --s2: #d95926; --bar-neutral: #5a5955; --warn-bg: rgba(250,178,25,.16);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10); --wash: rgba(255,255,255,.07);
+  --s1: #3987e5; --s2: #d95926; --bar-neutral: #5a5955; --warn-bg: rgba(250,178,25,.16);
+}
+* { box-sizing: border-box; }
+html { background: var(--page); }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.wrap { max-width: 1160px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 22px; margin: 0; font-weight: 650; letter-spacing: -.01em; }
+h2 { font-size: 17px; margin: 40px 0 12px; font-weight: 650; }
+h3 { font-size: 14px; margin: 0; font-weight: 650; }
+p { margin: 0; }
+.sub { color: var(--ink2); margin-top: 4px; max-width: 70ch; }
+.top { display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; border-radius: 4px; }
+
+/* ---- filter row (single row above everything it scopes) ---- */
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 20px 0 8px; }
+.filter { position: relative; }
+.fbtn, .ghost, .seg button {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; cursor: pointer;
+}
+.fbtn { display: inline-flex; gap: 8px; align-items: center; }
+.fbtn[aria-expanded="true"], .fbtn.on { border-color: var(--s1); }
+.fbtn .caret { color: var(--muted); font-size: 10px; }
+.badge { background: var(--s1); color: #fff; border-radius: 10px; padding: 0 7px; font-size: 11px; line-height: 18px; font-weight: 600; }
+.ghost { background: transparent; color: var(--ink2); }
+.fbtn:hover, .ghost:hover, .seg button:hover { background: var(--wash); }
+.fpanel { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; min-width: 230px; max-height: 340px; overflow: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.14); }
+.fpanel[hidden] { display: none; }
+.fpanel input[type=search] { width: 100%; margin: 2px 0 6px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--page); color: var(--ink); font: inherit; }
+.opt { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.opt:hover { background: var(--wash); }
+.opt input { accent-color: var(--s1); width: 15px; height: 15px; margin: 0; }
+.opt .cnt { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.opt.zero .nm { color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; margin-bottom: 16px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; background: var(--wash); border-radius: 14px; padding: 3px 6px 3px 10px; font-size: 12.5px; }
+.chip button { background: none; border: 0; cursor: pointer; color: var(--ink2); padding: 0 4px; font-size: 14px; line-height: 1; }
+.hint { color: var(--muted); font-size: 12.5px; align-self: center; }
+
+/* ---- KPI tiles ---- */
+.kpis { display: grid; grid-template-columns: 1.6fr repeat(4, 1fr); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 0; }
+.kpi .lab { color: var(--ink2); font-size: 12.5px; }
+.kpi .val { font-size: 26px; font-weight: 650; margin-top: 4px; letter-spacing: -.01em; }
+.kpi .note { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.hero .val { font-size: clamp(48px, 7vw, 60px); line-height: 1.05; margin-top: 6px; }
+.hero .delta { color: var(--ink2); margin-top: 6px; }
+.warn { display: flex; gap: 8px; align-items: flex-start; background: var(--warn-bg); border-radius: 10px; padding: 10px 12px; margin: 12px 0 0; }
+.warn[hidden] { display: none; }
+.warn b { font-weight: 650; }
+
+/* ---- charts ---- */
+.grid2 { display: grid; grid-template-columns: 1.35fr 1fr; gap: 12px; margin-top: 12px; }
+.card-h { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.card-sub { color: var(--ink2); font-size: 12.5px; margin-bottom: 10px; }
+.seg { display: inline-flex; gap: 0; }
+.seg button { border-radius: 0; margin-left: -1px; padding: 5px 10px; font-size: 12.5px; }
+.seg button:first-child { border-radius: 8px 0 0 8px; margin-left: 0; }
+.seg button:last-child { border-radius: 0 8px 8px 0; }
+.seg button[aria-pressed="true"] { background: var(--wash); border-color: var(--s1); position: relative; z-index: 1; font-weight: 600; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chart-wrap { position: relative; }
+.chart-wrap svg { display: block; width: 100%; overflow: visible; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; color: var(--ink2); font-size: 12.5px; margin: 0 0 6px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.tip { position: absolute; z-index: 10; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; box-shadow: 0 6px 18px rgba(0,0,0,.16); min-width: 150px; font-size: 12.5px; }
+.tip[hidden] { display: none; }
+.tip-title { color: var(--ink2); margin-bottom: 4px; }
+.tip-row { display: flex; align-items: center; gap: 8px; }
+.tip-row .key { width: 12px; height: 2px; flex: none; }
+.tip-val { font-weight: 650; font-variant-numeric: tabular-nums; }
+.tip-lab { color: var(--ink2); }
+.empty { color: var(--ink2); padding: 48px 8px; text-align: center; }
+text.axis { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.rowlab { fill: var(--ink); font-size: 12px; }
+.rowsub { fill: var(--muted); font-size: 10.5px; }
+.vlab { fill: var(--ink2); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.note-sm { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+/* ---- tables (table-view twin of every chart) ---- */
+.tbl-scroll { max-height: 340px; overflow: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; font-variant-numeric: tabular-nums; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--ink2); font-weight: 600; position: sticky; top: 0; background: var(--surface); }
+[hidden] { display: none !important; }
+footer { color: var(--ink2); font-size: 12.5px; margin-top: 40px; max-width: 90ch; }
+footer p + p { margin-top: 8px; }
+
+@media (max-width: 900px) {
+  .kpis { grid-template-columns: 1fr 1fr; }
+  .kpis .hero { grid-column: 1 / -1; }
+  .grid2 { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>Used-car price dashboard</h1>
+      <p class="sub" id="subtitle"></p>
+    </div>
+    <button class="ghost" id="theme" type="button" aria-label="Change colour theme">Theme: auto</button>
+  </div>
+
+  <div class="filters" id="filters" role="group" aria-label="Filters"></div>
+  <div class="chips" id="chips" aria-live="polite"></div>
+
+  <div class="kpis">
+    <div class="card kpi hero">
+      <div class="lab">Predicted median price</div>
+      <div class="val" id="k-pred">–</div>
+      <div class="delta" id="k-delta"></div>
+    </div>
+    <div class="card kpi"><div class="lab">Listings</div><div class="val" id="k-n">–</div><div class="note" id="k-share"></div></div>
+    <div class="card kpi"><div class="lab">Median actual price</div><div class="val" id="k-act">–</div><div class="note">asking price</div></div>
+    <div class="card kpi"><div class="lab">Mean absolute error</div><div class="val" id="k-mae">–</div><div class="note">per listing</div></div>
+    <div class="card kpi"><div class="lab">Mean abs. % error</div><div class="val" id="k-mape">–</div><div class="note">MAPE</div></div>
+  </div>
+  <div class="warn" id="warn" hidden><span aria-hidden="true">⚠</span><div id="warn-txt"></div></div>
+
+  <div class="grid2">
+    <section class="card" aria-labelledby="h-dist">
+      <div class="card-h">
+        <h3 id="h-dist">Price distribution</h3>
+        <div class="tools">
+          <div class="seg" role="group" aria-label="Series shown" id="seg-series">
+            <button type="button" data-v="both" aria-pressed="true">Both</button>
+            <button type="button" data-v="actual" aria-pressed="false">Actual</button>
+            <button type="button" data-v="pred" aria-pressed="false">Predicted</button>
+          </div>
+          <div class="seg" role="group" aria-label="View" id="seg-distview">
+            <button type="button" data-v="chart" aria-pressed="true">Chart</button>
+            <button type="button" data-v="table" aria-pressed="false">Table</button>
+          </div>
+        </div>
+      </div>
+      <p class="card-sub">Share of the selected listings per price band, actual asking price vs. the model's out-of-sample prediction.</p>
+      <div class="legend" id="dist-legend"></div>
+      <div class="chart-wrap" id="dist-chart"><div class="tip" hidden></div></div>
+      <div id="dist-summary"></div>
+      <div id="dist-table" hidden></div>
+      <p class="note-sm">Log price axis. Prices outside €500–€250k are grouped into the first and last band. Medians are interpolated from the bands (approximate).</p>
+    </section>
+
+    <section class="card" aria-labelledby="h-bd">
+      <div class="card-h">
+        <h3 id="h-bd">Where the model is right or wrong</h3>
+        <div class="tools">
+          <div class="seg" role="group" aria-label="Metric" id="seg-bmetric">
+            <button type="button" data-v="median" aria-pressed="true">Median price</button>
+            <button type="button" data-v="mape" aria-pressed="false">Error (MAPE)</button>
+          </div>
+          <div class="seg" role="group" aria-label="View" id="seg-bview">
+            <button type="button" data-v="chart" aria-pressed="true">Chart</button>
+            <button type="button" data-v="table" aria-pressed="false">Table</button>
+          </div>
+        </div>
+      </div>
+      <div class="tools" style="margin:4px 0 8px"><label for="bdim" style="color:var(--ink2)">Break down by</label>
+        <select id="bdim" class="ghost" style="padding:6px 8px"></select></div>
+      <div class="legend" id="bd-legend"></div>
+      <div class="chart-wrap" id="bd-chart"><div class="tip" hidden></div></div>
+      <div id="bd-table" hidden></div>
+      <p class="note-sm" id="bd-note"></p>
+    </section>
+  </div>
+
+  <h2 id="h-perf">Model performance</h2>
+  <p class="sub" style="margin:-6px 0 12px">Not affected by the filters. Cross-validated scores (5 folds on the 80% training portion), tuned with Optuna; mean ± standard deviation across folds.</p>
+  <div class="grid2">
+    <section class="card" aria-labelledby="h-lb">
+      <div class="card-h">
+        <h3 id="h-lb">Model comparison (cross-validation)</h3>
+        <div class="tools">
+          <div class="seg" role="group" aria-label="Metric" id="seg-pmetric">
+            <button type="button" data-v="mape" aria-pressed="true">MAPE</button>
+            <button type="button" data-v="mae" aria-pressed="false">MAE</button>
+            <button type="button" data-v="r2" aria-pressed="false">R²</button>
+            <button type="button" data-v="mae_log" aria-pressed="false">Log-MAE</button>
+          </div>
+          <div class="seg" role="group" aria-label="View" id="seg-pview">
+            <button type="button" data-v="chart" aria-pressed="true">Chart</button>
+            <button type="button" data-v="table" aria-pressed="false">Table</button>
+          </div>
+        </div>
+      </div>
+      <p class="card-sub" id="perf-sub"></p>
+      <div class="chart-wrap" id="perf-chart"><div class="tip" hidden></div></div>
+      <div id="perf-table" hidden></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-test">
+      <h3 id="h-test">Hold-out test set</h3>
+      <p class="card-sub">20% of the listings, never used for training or tuning, scored exactly once with the selected model.</p>
+      <div class="kpis" style="grid-template-columns:repeat(3,1fr);gap:8px" id="test-cards"></div>
+      <p class="note-sm" style="margin-bottom:12px">R² varies a lot between folds (about ±0.18), because a few very expensive cars dominate squared error. MAE and MAPE are the reliable numbers.</p>
+      <h3 style="margin-top:8px">Test error by brand segment</h3>
+      <div class="tbl-scroll" id="seg-table"></div>
+    </section>
+  </div>
+
+  <footer>
+    <p id="foot-data"></p>
+    <p><b>How the predictions were made.</b> Every listing is predicted by a model that never saw it: out-of-fold predictions for the training portion (5 refits on the cross-validation folds) and the final model for the hold-out test portion. The error shown for a filter therefore covers all listings and is close to, but not identical to, the headline test-set figure.</p>
+    <p><b>Limits.</b> Asking prices from a single 2019 snapshot, not sale prices. Filters are bucketed, and the dataset itself is private: this page contains only aggregated counts and histograms, and combinations with fewer than <span id="foot-k"></span> listings are hidden.</p>
+  </footer>
+</div>
+
+<script id="data" type="application/json">__DATA__</script>
+<script>
+"use strict";
+(function () {
+const D = JSON.parse(document.getElementById("data").textContent);
+const BINS = D.meta.bins, NB = BINS.length - 1;
+const DIMS = ["brand", "fuel", "gear", "age", "km", "power"];
+const TITLE = { brand: "Brand", fuel: "Fuel", gear: "Gearbox", age: "Age", km: "Mileage", power: "Power" };
+const OPT = D.meta.dims;
+const CELL = { n: 6, sy: 7, sp: 8, sabs: 9, sape: 10, hy: 11, hp: 12 };
+const LN0 = Math.log(BINS[0]), LN1 = Math.log(BINS[NB]);
+
+/* ------------------------------------------------------------------ helpers */
+const $ = (s, r = document) => r.querySelector(s);
+const SVGNS = "http://www.w3.org/2000/svg";
+function el(tag, attrs = {}, kids = [], svg = false) {
+  const e = svg ? document.createElementNS(SVGNS, tag) : document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "text") e.textContent = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v);
+  }
+  for (const c of [].concat(kids)) if (c) e.append(c);
+  return e;
+}
+const S = (tag, attrs, kids) => el(tag, attrs, kids, true);
+const nf0 = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 });
+const eur = x => (isFinite(x) ? "€" + nf0.format(Math.round(x)) : "–");
+const eurK = x => (x >= 1000 ? "€" + x / 1000 + "k" : "€" + x);
+const pct = (x, d = 1) => (isFinite(x) ? (x * 100).toFixed(d) + "%" : "–");
+function niceStep(raw) { const p = Math.pow(10, Math.floor(Math.log10(raw))); const f = raw / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; }
+
+/* ------------------------------------------------------------------ state */
+const sel = Object.fromEntries(DIMS.map(d => [d, new Set()]));
+const view = { series: "both", distview: "chart", bdim: "brand", bmetric: "median", bview: "chart", pmetric: "mape", pview: "chart" };
+let A = null; // aggregate of the current selection
+
+function matches(c, skip = -1) {
+  for (let i = 0; i < 6; i++) { const s = sel[DIMS[i]]; if (i !== skip && s.size && !s.has(c[i])) return false; }
+  return true;
+}
+function addHist(h, flat) { for (let i = 0; i < flat.length; i += 2) h[flat[i]] += flat[i + 1]; }
+function agg(pred) {
+  const a = { n: 0, sy: 0, sp: 0, sabs: 0, sape: 0, hy: new Float64Array(NB), hp: new Float64Array(NB) };
+  for (const c of D.cells) {
+    if (!pred(c)) continue;
+    a.n += c[6]; a.sy += c[7]; a.sp += c[8]; a.sabs += c[9]; a.sape += c[10];
+    addHist(a.hy, c[11]); addHist(a.hp, c[12]);
+  }
+  return a;
+}
+function quantile(h, q) {
+  let tot = 0; for (const v of h) tot += v;
+  if (!tot) return NaN;
+  const target = q * tot; let cum = 0;
+  for (let i = 0; i < NB; i++) {
+    const nxt = cum + h[i];
+    if (nxt >= target && h[i] > 0) {
+      const f = (target - cum) / h[i];
+      return Math.exp(Math.log(BINS[i]) + f * (Math.log(BINS[i + 1]) - Math.log(BINS[i])));
+    }
+    cum = nxt;
+  }
+  return BINS[NB];
+}
+const xFrac = p => (Math.log(p) - LN0) / (LN1 - LN0);
+
+/* ------------------------------------------------------------------ tooltip */
+function showTip(wrap, x, y, title, rows) {
+  const t = $(".tip", wrap);
+  t.replaceChildren(
+    el("div", { class: "tip-title", text: title }),
+    ...rows.map(r => el("div", { class: "tip-row" }, [
+      el("span", { class: "key", style: "background:" + r.color }),
+      el("span", { class: "tip-val", text: r.value }),
+      el("span", { class: "tip-lab", text: r.label })]))
+  );
+  t.hidden = false;
+  const w = t.offsetWidth, h = t.offsetHeight, W = wrap.clientWidth;
+  let left = x + 14; if (left + w > W - 4) left = x - w - 14;
+  t.style.left = Math.max(4, left) + "px";
+  t.style.top = Math.max(4, Math.min(y - h / 2, wrap.clientHeight - h - 4)) + "px";
+}
+const hideTip = wrap => { $(".tip", wrap).hidden = true; };
+
+/* ------------------------------------------------------------------ filters */
+const optNodes = {};
+function buildFilters() {
+  const bar = $("#filters");
+  DIMS.forEach((dim, di) => {
+    const btn = el("button", { class: "fbtn", type: "button", "aria-expanded": "false", "aria-haspopup": "true" });
+    const panel = el("div", { class: "fpanel", hidden: "" });
+    optNodes[dim] = [];
+    if (dim === "brand") {
+      panel.append(el("input", {
+        type: "search", placeholder: "Search brand", "aria-label": "Search brand",
+        oninput: e => { const q = e.target.value.toLowerCase(); optNodes.brand.forEach(o => { o.row.hidden = !o.name.toLowerCase().includes(q); }); }
+      }));
+    }
+    OPT[dim].forEach((name, v) => {
+      const input = el("input", { type: "checkbox", onchange: () => { input.checked ? sel[dim].add(v) : sel[dim].delete(v); update(); } });
+      const cnt = el("span", { class: "cnt" });
+      const row = el("label", { class: "opt" }, [input, el("span", { class: "nm", text: name }), cnt]);
+      panel.append(row);
+      optNodes[dim].push({ input, cnt, row, name });
+    });
+    const wrapEl = el("div", { class: "filter" }, [btn, panel]);
+    btn.addEventListener("click", () => {
+      const open = panel.hidden;
+      closePanels();
+      if (open) { panel.hidden = false; btn.setAttribute("aria-expanded", "true"); }
+    });
+    bar.append(wrapEl);
+    optNodes[dim].btn = btn;
+  });
+  bar.append(el("button", { class: "ghost", type: "button", text: "Reset filters", onclick: () => { DIMS.forEach(d => sel[d].clear()); syncChecks(); update(); } }));
+  bar.append(el("span", { class: "hint", text: "Nothing selected = all" }));
+  document.addEventListener("click", e => { if (!e.target.closest(".filter")) closePanels(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closePanels(); });
+}
+function closePanels() {
+  document.querySelectorAll(".fpanel").forEach(p => { p.hidden = true; });
+  document.querySelectorAll(".fbtn").forEach(b => b.setAttribute("aria-expanded", "false"));
+}
+function syncChecks() { DIMS.forEach(d => optNodes[d].forEach((o, v) => { o.input.checked = sel[d].has(v); })); }
+function renderFilterUI() {
+  DIMS.forEach((dim, di) => {
+    const cnt = new Array(OPT[dim].length).fill(0);
+    for (const c of D.cells) if (matches(c, di)) cnt[c[di]] += c[6];
+    optNodes[dim].forEach((o, v) => {
+      o.cnt.textContent = nf0.format(cnt[v]);
+      o.row.classList.toggle("zero", cnt[v] === 0);
+    });
+    const b = optNodes[dim].btn, k = sel[dim].size;
+    b.replaceChildren(...[el("span", { text: TITLE[dim] }), k ? el("span", { class: "badge", text: String(k) }) : null, el("span", { class: "caret", text: "▾" })].filter(Boolean));
+    b.classList.toggle("on", k > 0);
+  });
+  const chips = $("#chips"); chips.replaceChildren();
+  DIMS.forEach(dim => [...sel[dim]].sort((a, b) => a - b).forEach(v => {
+    chips.append(el("span", { class: "chip" }, [
+      el("span", { text: TITLE[dim] + ": " + OPT[dim][v] }),
+      el("button", { type: "button", "aria-label": "Remove " + OPT[dim][v], text: "×", onclick: () => { sel[dim].delete(v); syncChecks(); update(); } })]));
+  }));
+}
+
+/* ------------------------------------------------------------------ KPIs */
+function renderKPIs(a) {
+  const T = D.meta.totals;
+  const medA = quantile(a.hy, 0.5), medP = quantile(a.hp, 0.5);
+  $("#k-n").textContent = nf0.format(a.n);
+  $("#k-share").textContent = pct(a.n / T.n_shown) + " of all listings";
+  $("#k-act").textContent = eur(medA);
+  $("#k-pred").textContent = eur(medP);
+  $("#k-mae").textContent = a.n ? eur(a.sabs / a.n) : "–";
+  $("#k-mape").textContent = a.n ? pct(a.sape / a.n) : "–";
+  const d = $("#k-delta");
+  if (a.n) { const g = medP / medA - 1; d.textContent = (g >= 0 ? "▲ +" : "▼ −") + Math.abs(g * 100).toFixed(1) + "% vs. median actual price"; }
+  else d.textContent = "";
+  const w = $("#warn");
+  if (a.n === 0) { w.hidden = false; $("#warn-txt").innerHTML = ""; $("#warn-txt").append(el("b", { text: "No listings match these filters. " }), document.createTextNode("Remove a filter to see results.")); }
+  else if (a.n < 30) { w.hidden = false; $("#warn-txt").innerHTML = ""; $("#warn-txt").append(el("b", { text: "Only " + a.n + " listings. " }), document.createTextNode("Treat these numbers as indicative, not reliable.")); }
+  else w.hidden = true;
+}
+
+/* ------------------------------------------------------------------ distribution */
+let distBin = null;
+function drawDist() {
+  const box = $("#dist-chart"), tipEl = $(".tip", box);
+  box.replaceChildren(tipEl);
+  const a = A, showA = view.series !== "pred", showP = view.series !== "actual";
+  $("#dist-legend").replaceChildren(
+    ...(showA ? [el("span", {}, [el("i", { style: "background:var(--s1)" }), document.createTextNode("Actual price")])] : []),
+    ...(showP ? [el("span", {}, [el("i", { style: "background:var(--s2)" }), document.createTextNode("Predicted price")])] : []));
+  if (!a.n) { box.append(el("div", { class: "empty", text: "No listings match the current filters." })); return; }
+  const W = Math.max(300, box.clientWidth), H = 360, m = { l: 44, r: 14, t: 34, b: 32 };
+  const pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const shareA = Array.from(a.hy, v => v / a.n * 100), shareP = Array.from(a.hp, v => v / a.n * 100);
+  const vis = [...(showA ? shareA : []), ...(showP ? shareP : [])];
+  const step = niceStep(Math.max(...vis) / 4 || 1), ymax = step * 4;
+  const xB = i => m.l + (i + 0.5) / NB * pw, xP = p => m.l + xFrac(p) * pw, yV = v => m.t + ph - v / ymax * ph;
+  const svg = S("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img", tabindex: "0",
+    "aria-label": "Price distribution, actual versus predicted. Use left and right arrow keys to read each price band." });
+  for (let t = 0; t <= 4; t++) {
+    const y = yV(t * step);
+    svg.append(S("line", { x1: m.l, x2: W - m.r, y1: y, y2: y, style: `stroke:var(${t ? "--grid" : "--axis"});stroke-width:1` }));
+    svg.append(S("text", { x: m.l - 8, y: y + 4, "text-anchor": "end", class: "axis" }, [document.createTextNode(+(t * step).toFixed(2) + "%")]));
+  }
+  [500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 250000].forEach(p => {
+    const x = xP(p);
+    svg.append(S("line", { x1: x, x2: x, y1: m.t + ph, y2: m.t + ph + 4, style: "stroke:var(--axis);stroke-width:1" }));
+    svg.append(S("text", { x, y: H - 10, "text-anchor": "middle", class: "axis" }, [document.createTextNode(eurK(p))]));
+  });
+  const series = [];
+  if (showA) series.push({ key: "actual", label: "Actual", share: shareA, color: "var(--s1)", med: quantile(a.hy, .5), n: a.hy });
+  if (showP) series.push({ key: "pred", label: "Predicted", share: shareP, color: "var(--s2)", med: quantile(a.hp, .5), n: a.hp });
+  series.forEach(s => {
+    const pts = s.share.map((v, i) => `${xB(i).toFixed(1)},${yV(v).toFixed(1)}`);
+    svg.append(S("path", { d: `M${xB(0)},${yV(0)} L${pts.join(" L")} L${xB(NB - 1)},${yV(0)} Z`, style: `fill:${s.color};opacity:.10` }));
+    svg.append(S("path", { d: "M" + pts.join(" L"), style: `fill:none;stroke:${s.color};stroke-width:2;stroke-linejoin:round;stroke-linecap:round` }));
+  });
+  /* median markers with direct labels; the left-hand label is right-aligned so they never collide */
+  const meds = series.map(s => ({ ...s, x: xP(s.med) })).sort((p, q) => p.x - q.x);
+  meds.forEach((s, i) => {
+    svg.append(S("line", { x1: s.x, x2: s.x, y1: m.t - 4, y2: m.t + ph, style: `stroke:${s.color};stroke-width:1` }));
+    const left = meds.length === 2 ? i === 0 : s.x > m.l + pw * 0.62;
+    svg.append(S("circle", { cx: s.x, cy: m.t - 8, r: 3.5, style: `fill:${s.color}` }));
+    svg.append(S("text", { x: s.x + (left ? -8 : 8), y: m.t - 4, "text-anchor": left ? "end" : "start", class: "vlab" },
+      [document.createTextNode(`${s.label} median ${eur(s.med)}`)]));
+  });
+  const cross = S("line", { y1: m.t, y2: m.t + ph, style: "stroke:var(--ink2);stroke-width:1", visibility: "hidden" });
+  const dots = series.map(s => S("circle", { r: 4, style: `fill:${s.color};stroke:var(--surface);stroke-width:2`, visibility: "hidden" }));
+  svg.append(cross, ...dots);
+  const hit = S("rect", { x: m.l, y: m.t - 20, width: pw, height: ph + 20, style: "fill:transparent" });
+  svg.append(hit);
+  function focusBin(i, px, py) {
+    i = Math.max(0, Math.min(NB - 1, i)); distBin = i;
+    cross.setAttribute("x1", xB(i)); cross.setAttribute("x2", xB(i)); cross.setAttribute("visibility", "visible");
+    series.forEach((s, k) => { dots[k].setAttribute("cx", xB(i)); dots[k].setAttribute("cy", yV(s.share[i])); dots[k].setAttribute("visibility", "visible"); });
+    showTip(box, xB(i), py ?? m.t + ph / 3, `${eur(BINS[i])} – ${eur(BINS[i + 1])}`,
+      series.map(s => ({ color: s.color, value: s.share[i].toFixed(1) + "%", label: `${s.label} (${nf0.format(s.n[i])} listings)` })));
+  }
+  const fromEvent = e => { const r = svg.getBoundingClientRect(); const x = (e.clientX - r.left) * (W / r.width); return { i: Math.floor((x - m.l) / pw * NB), y: (e.clientY - r.top) * (H / r.height) }; };
+  hit.addEventListener("pointermove", e => { const p = fromEvent(e); focusBin(p.i, null, p.y); });
+  hit.addEventListener("pointerleave", () => { hideTip(box); cross.setAttribute("visibility", "hidden"); dots.forEach(d => d.setAttribute("visibility", "hidden")); });
+  svg.addEventListener("keydown", e => {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); focusBin((distBin ?? Math.floor(xFrac(meds[0].med) * NB)) + (e.key === "ArrowRight" ? 1 : -1)); }
+  });
+  svg.addEventListener("blur", () => { hideTip(box); });
+  box.prepend(svg);
+}
+function summaryTable(a) {
+  const qs = [.1, .25, .5, .75, .9];
+  return el("table", {}, [
+    el("thead", {}, el("tr", {}, ["", "P10", "P25", "Median", "P75", "P90", "Mean"].map(t => el("th", { text: t })))),
+    el("tbody", {}, [["Actual", a.hy, a.sy, "var(--s1)"], ["Predicted", a.hp, a.sp, "var(--s2)"]].map(([nm, h, s, c]) =>
+      el("tr", {}, [el("td", {}, [el("span", { class: "key", style: `display:inline-block;width:12px;height:2px;background:${c};margin-right:8px;vertical-align:middle` }), document.createTextNode(nm)]),
+        ...qs.map(q => el("td", { text: eur(quantile(h, q)) })), el("td", { text: eur(s / a.n) })])))]);
+}
+function distSummary() {
+  const box = $("#dist-summary"); box.replaceChildren();
+  if (A.n) box.append(el("div", { style: "margin-top:12px;overflow-x:auto" }, summaryTable(A)));
+}
+function distTable() {
+  const a = A, T = $("#dist-table"); T.replaceChildren();
+  if (!a.n) { T.append(el("div", { class: "empty", text: "No listings match the current filters." })); return; }
+  const sum = summaryTable(a);
+  const rows = [];
+  for (let i = 0; i < NB; i++) rows.push(el("tr", {}, [el("td", { text: `${eur(BINS[i])} – ${eur(BINS[i + 1])}` }),
+    el("td", { text: (a.hy[i] / a.n * 100).toFixed(2) + "%" }), el("td", { text: (a.hp[i] / a.n * 100).toFixed(2) + "%" }),
+    el("td", { text: nf0.format(a.hy[i]) }), el("td", { text: nf0.format(a.hp[i]) })]));
+  const bins = el("table", {}, [
+    el("thead", {}, el("tr", {}, ["Price band", "Actual %", "Predicted %", "Actual n", "Predicted n"].map(t => el("th", { text: t })))),
+    el("tbody", {}, rows)]);
+  T.append(sum, el("div", { class: "tbl-scroll", style: "margin-top:12px" }, bins));
+}
+
+/* ------------------------------------------------------------------ breakdown */
+function groups() {
+  const di = DIMS.indexOf(view.bdim), out = [];
+  OPT[view.bdim].forEach((name, v) => {
+    const a = agg(c => c[di] === v && matches(c));
+    if (a.n) out.push({ name, n: a.n, medA: quantile(a.hy, .5), medP: quantile(a.hp, .5), mape: a.sape / a.n, mae: a.sabs / a.n });
+  });
+  let note = "";
+  if (view.bdim === "brand" && out.length > 12) { out.sort((p, q) => q.n - p.n); note = `Top 12 of ${out.length} brands by number of listings.`; out.length = 12; }
+  return { out, note };
+}
+function barPath(x0, y, w, h, r, neg) {
+  if (neg || w <= r * 2) return `M${x0},${y} h${w} v${h} h${-w} Z`;
+  return `M${x0},${y} H${x0 + w - r} Q${x0 + w},${y} ${x0 + w},${y + r} V${y + h - r} Q${x0 + w},${y + h} ${x0 + w - r},${y + h} H${x0} Z`;
+}
+function drawBreakdown() {
+  const box = $("#bd-chart"), tipEl = $(".tip", box); box.replaceChildren(tipEl);
+  const { out, note } = groups(); $("#bd-note").textContent = note;
+  const isMed = view.bmetric === "median";
+  $("#bd-legend").replaceChildren(...(isMed ? [
+    el("span", {}, [el("i", { style: "background:var(--s1)" }), document.createTextNode("Actual median")]),
+    el("span", {}, [el("i", { style: "background:var(--s2)" }), document.createTextNode("Predicted median")])] : []));
+  if (!out.length) { box.append(el("div", { class: "empty", text: "No listings match the current filters." })); return; }
+  const W = Math.max(280, box.clientWidth), labW = W < 460 ? 92 : 112, rowH = isMed ? 44 : 32, m = { l: labW, r: 58, t: 6, b: 26 };
+  const H = m.t + out.length * rowH + m.b, pw = W - m.l - m.r;
+  const vals = out.flatMap(g => isMed ? [g.medA, g.medP] : [g.mape]);
+  const step = niceStep(Math.max(...vals) / 4), xmax = step * 4, xV = v => m.l + v / xmax * pw;
+  const fmt = v => (isMed ? eurK(Math.round(v)) : pct(v, 0));
+  const svg = S("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Breakdown by " + TITLE[view.bdim] });
+  for (let t = 0; t <= 4; t++) {
+    const x = xV(t * step);
+    svg.append(S("line", { x1: x, x2: x, y1: m.t, y2: m.t + out.length * rowH, style: `stroke:var(${t ? "--grid" : "--axis"});stroke-width:1` }));
+    svg.append(S("text", { x, y: H - 8, "text-anchor": "middle", class: "axis" }, [document.createTextNode(isMed ? eurK(t * step) : pct(t * step, 0))]));
+  }
+  out.forEach((g, i) => {
+    const y0 = m.t + i * rowH, gap = 2, bh = isMed ? 12 : 14;
+    const wash = S("rect", { x: 0, y: y0, width: W, height: rowH, style: "fill:var(--wash)", visibility: "hidden" });
+    svg.append(wash);
+    svg.append(S("text", { x: m.l - 8, y: y0 + rowH / 2 + 4, "text-anchor": "end", class: "rowlab" }, [document.createTextNode(g.name)]));
+    const bars = isMed ? [{ v: g.medA, c: "var(--s1)" }, { v: g.medP, c: "var(--s2)" }] : [{ v: g.mape, c: "var(--bar-neutral)" }];
+    const tot = bars.length * bh + (bars.length - 1) * gap, yb = y0 + (rowH - tot) / 2;
+    bars.forEach((b, k) => {
+      const y = yb + k * (bh + gap), w = Math.max(1, xV(b.v) - m.l);
+      svg.append(S("path", { d: barPath(m.l, y, w, bh, 4), style: `fill:${b.c}` }));
+      if (!isMed || out.length <= 6) svg.append(S("text", { x: m.l + w + 6, y: y + bh - 2, class: "vlab" }, [document.createTextNode(fmt(b.v))]));
+    });
+    const hit = S("rect", { x: 0, y: y0, width: W, height: rowH, tabindex: "0", style: "fill:transparent", "aria-label": g.name });
+    const show = e => {
+      wash.setAttribute("visibility", "visible");
+      const r = svg.getBoundingClientRect(), py = e && e.clientY ? (e.clientY - r.top) * (H / r.height) : y0 + rowH / 2, px = e && e.clientX ? (e.clientX - r.left) * (W / r.width) : m.l + pw / 2;
+      showTip(box, px, py, `${g.name} · ${nf0.format(g.n)} listings`, isMed ? [
+        { color: "var(--s1)", value: eur(g.medA), label: "actual median" },
+        { color: "var(--s2)", value: eur(g.medP), label: "predicted median" },
+        { color: "var(--ink2)", value: pct(g.mape), label: "MAPE" }] : [
+        { color: "var(--ink2)", value: pct(g.mape), label: "MAPE" },
+        { color: "var(--ink2)", value: eur(g.mae), label: "mean abs. error" }]);
+    };
+    const hide = () => { wash.setAttribute("visibility", "hidden"); hideTip(box); };
+    hit.addEventListener("pointermove", show); hit.addEventListener("focus", () => show(null));
+    hit.addEventListener("pointerleave", hide); hit.addEventListener("blur", hide);
+    svg.append(hit);
+  });
+  box.prepend(svg);
+}
+function bdTable() {
+  const T = $("#bd-table"); T.replaceChildren();
+  const { out } = groups();
+  if (!out.length) { T.append(el("div", { class: "empty", text: "No listings match the current filters." })); return; }
+  T.append(el("div", { class: "tbl-scroll" }, el("table", {}, [
+    el("thead", {}, el("tr", {}, [TITLE[view.bdim], "Listings", "Actual median", "Predicted median", "Gap", "MAPE", "MAE"].map(t => el("th", { text: t })))),
+    el("tbody", {}, out.map(g => el("tr", {}, [g.name, nf0.format(g.n), eur(g.medA), eur(g.medP),
+      (g.medP / g.medA - 1 >= 0 ? "+" : "") + ((g.medP / g.medA - 1) * 100).toFixed(1) + "%", pct(g.mape), eur(g.mae)].map(t => el("td", { text: t })))))])));
+}
+
+/* ------------------------------------------------------------------ model performance */
+const PM = {
+  mape: { mean: "mape_mean", sd: "mape_std", fmt: v => pct(v), axis: v => pct(v, 0), best: "low", title: "Mean absolute percentage error, lower is better" },
+  mae: { mean: "mae_mean", sd: "mae_std", fmt: eur, axis: v => eurK(Math.round(v)), best: "low", title: "Mean absolute error in euros, lower is better" },
+  r2: { mean: "r2_mean", sd: "r2_std", fmt: v => v.toFixed(3), axis: v => v.toFixed(1), best: "high", title: "R², higher is better (unstable between folds)" },
+  mae_log: { mean: "mae_log_mean", sd: "mae_log_std", fmt: v => v.toFixed(4), axis: v => v.toFixed(2), best: "low", title: "Mean absolute error on log price (the tuning objective), lower is better" },
+};
+function drawPerf() {
+  const box = $("#perf-chart"), tipEl = $(".tip", box); box.replaceChildren(tipEl);
+  const P = PM[view.pmetric]; $("#perf-sub").textContent = P.title + ". Blue = the model selected for the final evaluation; whiskers are ±1 standard deviation across folds.";
+  const rows = [...D.models].sort((p, q) => (P.best === "low" ? p[P.mean] - q[P.mean] : q[P.mean] - p[P.mean]));
+  const W = Math.max(300, box.clientWidth), labW = W < 460 ? 108 : 132, rowH = 38, m = { l: labW, r: 92, t: 6, b: 26 };
+  const H = m.t + rows.length * rowH + m.b, pw = W - m.l - m.r;
+  const real = rows.filter(r => r.model !== "dummy");           // the baseline is clipped so it does not flatten the real models
+  const lo = Math.min(0, ...real.map(r => r[P.mean] - r[P.sd])), hi = Math.max(...real.map(r => r[P.mean] + r[P.sd]));
+  const step = niceStep((hi - lo) / 4), x0v = Math.floor(lo / step) * step, x1v = Math.ceil(hi / step) * step;
+  const xV = v => m.l + (v - x0v) / (x1v - x0v) * pw;
+  const svg = S("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Model comparison, " + view.pmetric });
+  for (let v = x0v; v <= x1v + step / 2; v += step) {
+    svg.append(S("line", { x1: xV(v), x2: xV(v), y1: m.t, y2: m.t + rows.length * rowH, style: `stroke:var(${Math.abs(v) < 1e-9 ? "--axis" : "--grid"});stroke-width:1` }));
+    svg.append(S("text", { x: xV(v), y: H - 8, "text-anchor": "middle", class: "axis" }, [document.createTextNode(P.axis(v))]));
+  }
+  rows.forEach((r, i) => {
+    const y0 = m.t + i * rowH, bh = 14, yb = y0 + (rowH - bh) / 2, v = r[P.mean], sd = r[P.sd], base = xV(0);
+    const wash = S("rect", { x: 0, y: y0, width: W, height: rowH, style: "fill:var(--wash)", visibility: "hidden" });
+    svg.append(wash);
+    svg.append(S("text", { x: m.l - 8, y: y0 + rowH / 2 - 1, "text-anchor": "end", class: "rowlab" }, [document.createTextNode(r.label)]));
+    svg.append(S("text", { x: m.l - 8, y: y0 + rowH / 2 + 12, "text-anchor": "end", class: "rowsub" }, [document.createTextNode(r.tuned ? r.trials + " trials" : "no tuning")]));
+    const chosen = r.model === D.test.model, fill = chosen ? "var(--s1)" : "var(--bar-neutral)";
+    const clipped = r.model === "dummy" && (v > x1v || v < x0v), xv = clipped ? xV(v > x1v ? x1v : x0v) : xV(v);
+    svg.append(S("path", { d: barPath(Math.min(base, xv), yb, Math.max(1, Math.abs(xv - base)), bh, 4, v < 0), style: `fill:${fill}` }));
+    const ya = yb + bh / 2, xa = xV(v - sd), xb = xV(v + sd);
+    if (!clipped) svg.append(S("path", { d: `M${xa},${ya} H${xb} M${xa},${ya - 4} V${ya + 4} M${xb},${ya - 4} V${ya + 4}`, style: "fill:none;stroke:var(--ink2);stroke-width:1" }));
+    else svg.append(S("path", { d: `M${xv - 9},${yb - 2} l4,${bh / 2 + 2} l-4,${bh / 2 + 2} M${xv - 4},${yb - 2} l4,${bh / 2 + 2} l-4,${bh / 2 + 2}`, style: "fill:none;stroke:var(--surface);stroke-width:2" }));   // axis-break marks
+    svg.append(S("text", { x: (clipped ? xv : Math.max(xa, xb)) + 6, y: ya + 4, class: "vlab" }, [document.createTextNode(P.fmt(v) + (clipped ? " (off scale)" : ""))]));
+    const hit = S("rect", { x: 0, y: y0, width: W, height: rowH, tabindex: "0", style: "fill:transparent", "aria-label": r.label });
+    const show = e => {
+      wash.setAttribute("visibility", "visible");
+      const rc = svg.getBoundingClientRect(), py = e && e.clientY ? (e.clientY - rc.top) * (H / rc.height) : y0 + rowH / 2, px = e && e.clientX ? (e.clientX - rc.left) * (W / rc.width) : m.l + pw / 2;
+      showTip(box, px, py, r.label + (chosen ? " · selected model" : ""), [
+        { color: fill, value: P.fmt(v), label: "mean over 5 folds" }, { color: "var(--ink2)", value: "± " + P.fmt(sd).replace(/^€/, "€"), label: "std across folds" },
+        { color: "var(--ink2)", value: r.tuned ? String(r.trials) : "0", label: "Optuna trials" }]);
+    };
+    const hide = () => { wash.setAttribute("visibility", "hidden"); hideTip(box); };
+    hit.addEventListener("pointermove", show); hit.addEventListener("focus", () => show(null));
+    hit.addEventListener("pointerleave", hide); hit.addEventListener("blur", hide);
+    svg.append(hit);
+  });
+  box.prepend(svg);
+}
+function perfTable() {
+  const T = $("#perf-table"); T.replaceChildren();
+  const pm = (v, s, f) => f(v) + " ± " + f(s);
+  T.append(el("div", { class: "tbl-scroll" }, el("table", {}, [
+    el("thead", {}, el("tr", {}, ["Model", "Trials", "MAE", "MAPE", "R²", "Log-MAE"].map(t => el("th", { text: t })))),
+    el("tbody", {}, D.models.map(r => el("tr", {}, [r.label + (r.model === D.test.model ? " ★" : ""), r.tuned ? String(r.trials) : "–",
+      pm(r.mae_mean, r.mae_std, eur), pm(r.mape_mean, r.mape_std, v => pct(v)), pm(r.r2_mean, r.r2_std, v => v.toFixed(2)),
+      pm(r.mae_log_mean, r.mae_log_std, v => v.toFixed(4))].map(t => el("td", { text: t })))))])));
+}
+function renderStatic() {
+  const t = D.test, cards = $("#test-cards");
+  [["MAE", eur(t.mae)], ["MAPE", pct(t.mape)], ["R²", t.r2.toFixed(2)]].forEach(([l, v]) =>
+    cards.append(el("div", { class: "card kpi", style: "padding:12px" }, [el("div", { class: "lab", text: l }), el("div", { class: "val", style: "font-size:22px", text: v })])));
+  $("#seg-table").append(el("table", {}, [
+    el("thead", {}, el("tr", {}, ["Segment", "Listings", "MAPE", "Median APE", "MAE"].map(x => el("th", { text: x })))),
+    el("tbody", {}, D.segments.map(s => el("tr", {}, [s.segment, nf0.format(s.n), pct(s.MAPE), pct(s.MedAPE), eur(s.MAE)].map(x => el("td", { text: x })))))]));
+  const T = D.meta.totals;
+  $("#subtitle").textContent = `Actual asking prices vs. out-of-sample model predictions for ${nf0.format(T.n_shown)} used-car listings. Pick filters to see the price distribution and the predicted price for that slice.`;
+  $("#foot-data").innerHTML = ""; $("#foot-data").append(el("b", { text: "Data. " }),
+    document.createTextNode(`${nf0.format(T.n_total)} cleaned Italian used-car listings. This page shows ${pct(T.coverage)} of them (${nf0.format(T.n_shown)}); the rest fall in filter combinations with fewer than ${T.min_cell} listings, which are hidden for privacy.`
+    + (T.mape_hidden != null ? ` Those hidden listings are rarer cars and are harder to price (MAPE ${pct(T.mape_hidden)} vs ${pct(T.mape_shown)} for the listings shown), so the errors on this page are slightly optimistic compared with all ${nf0.format(T.n_total)} listings (${pct(T.mape_all)}).` : "")));
+  $("#foot-k").textContent = String(T.min_cell);
+  const dimSelect = $("#bdim");
+  DIMS.forEach(d => dimSelect.append(el("option", { value: d, text: TITLE[d] })));
+}
+
+/* ------------------------------------------------------------------ wiring */
+function seg(id, key, after) {
+  const g = $(id);
+  g.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    view[key] = b.dataset.v; g.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); after();
+  });
+}
+function syncView() {
+  $("#dist-chart").hidden = view.distview !== "chart"; $("#dist-legend").hidden = view.distview !== "chart"; $("#dist-summary").hidden = view.distview !== "chart"; $("#dist-table").hidden = view.distview !== "table";
+  $("#bd-chart").hidden = view.bview !== "chart"; $("#bd-legend").hidden = view.bview !== "chart"; $("#bd-table").hidden = view.bview !== "table";
+  $("#perf-chart").hidden = view.pview !== "chart"; $("#perf-table").hidden = view.pview !== "table";
+}
+function renderCharts() {
+  syncView();
+  distSummary();
+  if (view.distview === "chart") drawDist(); else distTable();
+  if (view.bview === "chart") drawBreakdown(); else bdTable();
+  if (view.pview === "chart") drawPerf(); else perfTable();
+}
+function update() {
+  A = agg(c => matches(c));
+  renderKPIs(A); renderFilterUI(); renderCharts(); writeHash();
+}
+function writeHash() {
+  const p = new URLSearchParams();
+  DIMS.forEach(d => { if (sel[d].size) p.set(d, [...sel[d]].sort((a, b) => a - b).join(".")); });
+  const s = p.toString();
+  try { history.replaceState(null, "", s ? "#" + s : location.pathname + location.search); } catch (e) { /* file:// or sandbox */ }
+}
+function readHash() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  const th = p.get("theme");
+  if (th === "light" || th === "dark") { document.documentElement.setAttribute("data-theme", th); const b = $("#theme"); if (b) b.textContent = "Theme: " + th; }
+  DIMS.forEach(d => { const v = p.get(d); if (v) v.split(".").map(Number).filter(i => i >= 0 && i < OPT[d].length).forEach(i => sel[d].add(i)); });
+}
+
+/* ------------------------------------------------------------------ self-test (#selftest) */
+function selfTest() {
+  const R = D.meta.reference, res = [], ok = (name, cond) => res.push([name, !!cond]);
+  const all = agg(() => true), near = (x, y, tol) => Math.abs(x - y) <= tol * Math.abs(y);
+  ok("total listings", all.n === R.n);
+  ok("mean actual", near(all.sy / all.n, R.mean_actual, 1e-3));
+  ok("mean predicted", near(all.sp / all.n, R.mean_pred, 1e-3));
+  ok("MAE", near(all.sabs / all.n, R.mae, 1e-3));
+  ok("MAPE", near(all.sape / all.n, R.mape, 1e-3));
+  ok("median actual (interpolated, ±3%)", near(quantile(all.hy, .5), R.median_actual, 0.03));
+  ok("median predicted (interpolated, ±3%)", near(quantile(all.hp, .5), R.median_pred, 0.03));
+  ok("histogram mass = n", Math.abs(all.hy.reduce((s, v) => s + v, 0) - all.n) < 1e-6 && Math.abs(all.hp.reduce((s, v) => s + v, 0) - all.n) < 1e-6);
+  let brandOk = true;
+  R.brand_n.forEach((n, b) => { if (agg(c => c[0] === b).n !== n) brandOk = false; });
+  ok("per-brand counts match the raw data", brandOk);
+  const before = DIMS.map(d => [...sel[d]]);
+  sel.brand.add(0); sel.fuel.add(0);
+  const both = agg(c => matches(c)).n, viaBrand = agg(c => c[0] === 0 && c[1] === 0).n;
+  ok("two filters = intersection", both === viaBrand);
+  DIMS.forEach((d, i) => { sel[d].clear(); before[i].forEach(v => sel[d].add(v)); });
+  sel.brand.clear(); OPT.brand.forEach((_, i) => sel.brand.add(i));
+  ok("all options selected = no filter", agg(c => matches(c)).n === all.n);
+  sel.brand.clear();
+  interactionTests(ok);
+  const bad = res.filter(r => !r[1]).map(r => r[0]);
+  document.title = bad.length ? "SELFTEST FAIL: " + bad.join("; ") : `SELFTEST PASS ${res.length}/${res.length}`;
+}
+
+function interactionTests(ok) {
+  const $$ = (q, r = document) => [...r.querySelectorAll(q)];
+  const fire = (n, type, x, y) => n.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: x, clientY: y }));
+  const center = n => { const r = n.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+  const tip = id => $("#" + id + " .tip");
+  update();                                                   // fresh render with no filters
+  const hitD = $$("#dist-chart svg rect").pop();
+  fire(hitD, "pointermove", ...center(hitD));
+  ok("distribution tooltip lists both series", !tip("dist-chart").hidden && /Actual/.test(tip("dist-chart").textContent) && /Predicted/.test(tip("dist-chart").textContent));
+  $("#dist-chart svg").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+  ok("keyboard arrows move the crosshair", !tip("dist-chart").hidden);
+  fire(hitD, "pointerleave");
+  ok("tooltip hides on leave", tip("dist-chart").hidden);
+  const rowB = $$("#bd-chart svg rect[tabindex]")[0];
+  fire(rowB, "pointermove", ...center(rowB));
+  ok("breakdown tooltip shows the group", !tip("bd-chart").hidden && /listings/.test(tip("bd-chart").textContent));
+  const rowP = $$("#perf-chart svg rect[tabindex]")[0];
+  fire(rowP, "pointermove", ...center(rowP));
+  ok("model tooltip shows trials", !tip("perf-chart").hidden && /Optuna trials/.test(tip("perf-chart").textContent));
+  const click = q => $(q).click();
+  click("#seg-series button[data-v=actual]");
+  ok("series toggle keeps one series", $$("#dist-legend span").length === 1);
+  click("#seg-series button[data-v=both]");
+  click("#seg-distview button[data-v=table]");
+  ok("distribution table view has the 60 bands", !$("#dist-table").hidden && $$("#dist-table tr").length > 60);
+  click("#seg-distview button[data-v=chart]");
+  click("#seg-bmetric button[data-v=mape]");
+  ok("breakdown MAPE mode renders", $$("#bd-chart svg path").length > 0 && $$("#bd-legend span").length === 0);
+  click("#seg-bmetric button[data-v=median]");
+  view.bdim = "power"; $("#bdim").value = "power"; renderCharts();
+  ok("breakdown by power has 5 groups", $$("#bd-chart svg rect[tabindex]").length === 5);
+  view.bdim = "brand"; $("#bdim").value = "brand";
+  click("#seg-pmetric button[data-v=r2]");
+  ok("R² view renders all 8 models", $$("#perf-chart svg rect[tabindex]").length === 8);
+  click("#seg-pview button[data-v=table]");
+  ok("model table view renders", $$("#perf-table tbody tr").length === 8);
+  click("#seg-pview button[data-v=chart]"); click("#seg-pmetric button[data-v=mape]");
+  DIMS.forEach(d => sel[d].clear()); sel.fuel.add(3); sel.km.add(4); update();
+  ok("empty selection shows the warning and no chart error", !$("#warn").hidden && $("#k-pred").textContent === "–");
+  DIMS.forEach(d => sel[d].clear()); syncChecks(); update();
+}
+
+/* ------------------------------------------------------------------ boot */
+function boot() {
+  const wantTest = location.hash.includes("selftest");
+  renderStatic(); buildFilters(); readHash(); syncChecks();
+  seg("#seg-series", "series", () => drawDist());
+  seg("#seg-distview", "distview", () => { renderCharts(); });
+  seg("#seg-bmetric", "bmetric", () => renderCharts());
+  seg("#seg-bview", "bview", () => renderCharts());
+  seg("#seg-pmetric", "pmetric", () => renderCharts());
+  seg("#seg-pview", "pview", () => renderCharts());
+  $("#bdim").addEventListener("change", e => { view.bdim = e.target.value; renderCharts(); });
+  const themes = ["auto", "light", "dark"]; let ti = 0;
+  $("#theme").addEventListener("click", () => {
+    ti = (ti + 1) % 3; const t = themes[ti];
+    if (t === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", t);
+    $("#theme").textContent = "Theme: " + t;
+  });
+  update();
+  let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(renderCharts, 120); });
+  if (wantTest) { try { selfTest(); } catch (e) { document.title = "SELFTEST ERROR: " + e.message; } }
+}
+boot();
+})();
+</script>
+</body>
+</html>

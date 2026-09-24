@@ -1,0 +1,39 @@
+seed: 17
+
+paths:
+  raw: data/raw/auto_price.csv
+  sample: data/sample/auto_price_sample.csv
+  models: models
+  results: reports/results
+  figures: reports/figures
+  optuna_db: reports/optuna.db
+  interim: data/interim          # row-level caches, never committed
+  dashboard: docs/index.html
+
+cleaning:
+  reference_year: 2019        # dataset snapshot year, used to compute car age
+  min_year: 1950
+  max_km: 1000000000              # obviously wrong odometer values
+  max_km_per_year: 35000      # plausibility cap (~99th pct of km/year on the raw data)
+  cv_range: [8, 800]
+  small_brand_max_cv: 250     # FIAT / DAEWOO rows above this are data-entry errors
+  engine_range: [200, 8000]   # cc outside this range -> treated as missing (IVECO exempt from upper bound)
+  max_seats: 30
+  max_consume: 40             # l/100km; larger values are data-entry errors -> missing
+  max_emissions: 600          # g/km; same
+
+split:
+  test_size: 0.2
+  n_folds: 5
+  n_price_bins: 10            # price quantile bins used to stratify test split and CV folds
+
+tuning:
+  n_trials:                   # per model, sized to fit-time (CatBoost ~20x slower than LightGBM)
+    ridge: 20
+    elasticnet: 15
+    poly_ridge: 15
+    rf: 8
+    xgb: 20
+    lgbm: 20
+    catboost: 3
+  metric: mae_log             # objective minimised by Optuna (mean over CV folds)
